@@ -7,6 +7,7 @@ import (
 	"reflect"
 	"runtime"
 	"strconv"
+	"time"
 
 	"github.com/graphql-go/graphql"
 )
@@ -17,7 +18,16 @@ const (
 	descTag     = "desc"
 )
 
+// DefaultLoaders are for extra types beyond the 4 scalar types built into GraphQL.
 var DefaultLoaders = []struct {
+	LoaderFunc interface{}
+	GqlType    graphql.Output
+}{
+	{LoaderFunc: LoadTime, GqlType: graphql.String},
+}
+
+// BaseLoaders are for the 4 scalar types built into GraphQL.
+var BaseLoaders = []struct {
 	LoaderFunc interface{}
 	GqlType    graphql.Output
 }{
@@ -29,10 +39,25 @@ var DefaultLoaders = []struct {
 
 var defaultLoader *ArgLoader
 
-// New returns a ArgLoader with the default loader funcs enabled.
+// New returns a ArgLoader with all default loader funcs enabled.
 func New() (*ArgLoader, error) {
-	ec := Empty()
+	ec, err := Base()
+	if err != nil {
+		return nil, fmt.Errorf("could not load default arg funcs: %v", err)
+	}
 	for _, l := range DefaultLoaders {
+		err = ec.Register(l.LoaderFunc, l.GqlType)
+		if err != nil {
+			return nil, err
+		}
+	}
+	return ec, nil
+}
+
+// New returns a ArgLoader with the 4 base loader funcs enabled.
+func Base() (*ArgLoader, error) {
+	ec := Empty()
+	for _, l := range BaseLoaders {
 		err := ec.Register(l.LoaderFunc, l.GqlType)
 		if err != nil {
 			return nil, err
@@ -242,6 +267,14 @@ func LoadFloat(i interface{}) (float64, error) {
 		return 0, fmt.Errorf("%v is not a float", i)
 	}
 	return b, nil
+}
+
+func LoadTime(i interface{}) (time.Time, error) {
+	s, ok := i.(string)
+	if !ok {
+		return time.Time{}, fmt.Errorf("%v is not a RFC3339 timestamp", i)
+	}
+	return time.Parse(time.RFC3339, s)
 }
 
 func ArgsConfig(i interface{}) graphql.FieldConfigArgument {
